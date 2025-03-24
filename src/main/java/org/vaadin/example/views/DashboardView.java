@@ -1,12 +1,15 @@
 package org.vaadin.example.views;
 
 
-import com.vaadin.flow.component.Text;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.*;
+import com.vaadin.flow.component.html.H1;
+import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -42,13 +45,27 @@ public class DashboardView extends VerticalLayout {
         grid.addColumn(Book::getTitle).setHeader("Title");
         grid.addColumn(Book::getAuthor).setHeader("Author");
         grid.addColumn(Book::getPublicationYear).setHeader("Year");
+
         grid.addComponentColumn(book -> {
-            Button delete = new Button("Delete");
-            delete.addClickListener(e -> {
+            HorizontalLayout buttons = new HorizontalLayout();
+
+            // Edit Button
+            Button editBtn = new Button(VaadinIcon.EDIT.create());
+            editBtn.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+            editBtn.addClickListener(e -> showEditDialog(book));
+
+            // Delete Button
+            Button deleteBtn = new Button(VaadinIcon.TRASH.create());
+            deleteBtn.addThemeVariants(ButtonVariant.LUMO_ERROR);
+            deleteBtn.addClickListener(e -> {
                 showConfirmDeleteDialog(this::deleteBookRecord, book);
+
             });
-            return delete;
+
+            buttons.add(editBtn, deleteBtn);
+            return buttons;
         }).setHeader("Actions");
+
 
         // Make rows clickable
         grid.addItemClickListener(e -> showDetailDialog(e.getItem()));
@@ -123,6 +140,8 @@ public class DashboardView extends VerticalLayout {
         // Title with bold and large font using Heading component
         H2 title = new H2("Are you sure you want to delete this book?");
         title.getStyle().set("margin", "0");
+        mainLayout.add(title);
+
         HorizontalLayout horizontalLayout = new HorizontalLayout();
         horizontalLayout.setWidthFull();
         horizontalLayout.setJustifyContentMode(JustifyContentMode.CENTER);
@@ -165,6 +184,96 @@ public class DashboardView extends VerticalLayout {
 
         Binder<Book> binder = new Binder<>(Book.class);
 
+        configureBinder(binder, title,author, year, description);
+
+        Button save = new Button("Save", e -> {
+            if (binder.validate().isOk()) {
+                Book book = new Book();
+                try {
+                    binder.writeBean(book);
+                    bookService.save(book);
+                    updateGrid();
+                    dialog.close();
+                } catch (ValidationException ex) {
+                    Notification.show("Validation error: " + ex.getMessage());
+                }
+            }
+        });
+
+        FormLayout form = new FormLayout();
+        form.add(title, author, year, description);
+        dialog.add(form, save);
+        dialog.open();
+    }
+
+    private void showEditDialog(Book book) {
+        Dialog dialog = new Dialog();
+        VerticalLayout layout = new VerticalLayout();
+
+        // Form fields
+        TextField title = new TextField("Title");
+        TextField author = new TextField("Author");
+        TextField year = new TextField("Publication Year");
+        TextArea description = new TextArea("Description");
+
+        // Initialize fields with existing values
+        title.setValue(book.getTitle());
+        author.setValue(book.getAuthor());
+        year.setValue(book.getPublicationYear().toString());
+        description.setValue(book.getDescription());
+
+        // Validation binder
+        Binder<Book> binder = new Binder<>(Book.class);
+        configureBinder(binder, title, author, year, description);
+
+        Button save = new Button("Save", e -> {
+            if (binder.validate().isOk()) {
+                try {
+                    binder.writeBean(book);
+                    bookService.save(book);
+                    updateGrid();
+                    dialog.close();
+                    Notification.show("Book updated successfully");
+                } catch (ValidationException ex) {
+                    Notification.show("Validation error: " + ex.getMessage());
+                }
+            }
+        });
+
+        layout.add(
+                new H3("Edit Book"),
+                createFormLayout(title, author, year, description),
+                save
+        );
+
+        dialog.add(layout);
+        dialog.open();
+    }
+
+    private FormLayout createFormLayout(TextField title,
+                                        TextField author,
+                                        TextField year,
+                                        TextArea description) {
+        FormLayout form = new FormLayout();
+        form.add(
+                title,
+                author,
+                year,
+                description
+        );
+        form.setResponsiveSteps(
+                new FormLayout.ResponsiveStep("0", 1),
+                new FormLayout.ResponsiveStep("500px", 2)
+        );
+        return form;
+    }
+
+    private void configureBinder(Binder<Book> binder,
+                                 TextField title,
+                                 TextField author,
+                                 TextField year,
+                                 TextArea description) {
+
         binder.forField(title)
                 .asRequired("Title is required")
                 .bind(Book::getTitle, Book::setTitle);
@@ -185,25 +294,6 @@ public class DashboardView extends VerticalLayout {
         binder.forField(description)
                 .asRequired("Description is required")
                 .bind(Book::getDescription, Book::setDescription);
-
-        Button save = new Button("Save", e -> {
-            if (binder.validate().isOk()) {
-                Book book = new Book();
-                try {
-                    binder.writeBean(book);
-                    bookService.save(book);
-                    updateGrid();
-                    dialog.close();
-                } catch (ValidationException ex) {
-                    Notification.show("Validation error: " + ex.getMessage());
-                }
-            }
-        });
-
-        FormLayout form = new FormLayout();
-        form.add(title, author, year, description);
-        dialog.add(form, save);
-        dialog.open();
     }
 
     private void updateGrid() {
