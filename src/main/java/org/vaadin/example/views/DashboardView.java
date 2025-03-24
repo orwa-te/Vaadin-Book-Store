@@ -1,6 +1,8 @@
 package org.vaadin.example.views;
 
 
+import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -19,23 +21,41 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
 import com.vaadin.flow.router.Route;
+import jakarta.annotation.security.PermitAll;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.vaadin.example.backend.entity.Book;
+import org.vaadin.example.backend.service.AsyncRestClientService;
 import org.vaadin.example.backend.service.BookService;
 
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-@Route("dashboard")
+import static org.reflections.Reflections.log;
+
+@Route("")
+@PermitAll
 public class DashboardView extends VerticalLayout {
     private final BookService bookService;
     private final Grid<Book> grid = new Grid<>(Book.class, false);
+    private final AsyncRestClientService service;
 
-    public DashboardView(BookService bookService) {
+
+    public DashboardView(@Autowired AsyncRestClientService service, BookService bookService) {
+        this.service = service;
         this.bookService = bookService;
         configureGrid();
+        var layout = new HorizontalLayout(new H1("Book Store Dashboard"), createLogoutButton());
+        layout.setWidthFull();
+        layout.setJustifyContentMode(JustifyContentMode.BETWEEN);
+
+        var horizontalLayout = new HorizontalLayout();
+        horizontalLayout.add(createAddButton(), createReqestBooksDeliveryButton());
+
         add(
-                new H1("Book Store Dashboard"),
-                createAddButton(),
+                layout,
+                horizontalLayout,
                 grid
         );
         updateGrid();
@@ -172,6 +192,31 @@ public class DashboardView extends VerticalLayout {
         return button;
     }
 
+    private Button createReqestBooksDeliveryButton() {
+        Button button = new Button("Request Delivery", VaadinIcon.CAR.create());
+        button.addClickListener(e -> requestBooksDelivery());
+        return button;
+    }
+
+    private void requestBooksDelivery(){
+        final UI ui = getUI().isPresent()? getUI().get():null;
+        if(ui == null){
+            log.error("error_getting_ui_when_request_book_delivery");
+        }
+        service.getBooksAsync(book -> {
+            Objects.requireNonNull(ui).access(() -> {
+                try{
+                    bookService.save(book);
+                    updateGrid();
+                    Notification.show("new book received "+ book.getTitle());
+                }catch (Exception e){
+                    log.error("error_saving_data={}",e.getMessage());
+                }
+
+            });
+        });
+    }
+
     private void showAddDialog() {
         Dialog dialog = new Dialog();
         TextField title = new TextField("Title");
@@ -298,5 +343,23 @@ public class DashboardView extends VerticalLayout {
 
     private void updateGrid() {
         grid.setItems(bookService.findAll());
+    }
+
+    private Component createLogoutButton() {
+        Button logoutButton = new Button("Logout", VaadinIcon.SIGN_OUT.create());
+        logoutButton.addThemeVariants(ButtonVariant.LUMO_ERROR);
+
+        logoutButton.addClickListener(e -> {
+            // Spring Security logout logic
+            UI ui = UI.getCurrent();
+            if(ui!=null){
+                ui.getSession().getSession().invalidate();
+                ui.getSession().close();
+                SecurityContextHolder.clearContext();
+                ui.getPage().setLocation("/login");
+            }
+        });
+
+        return logoutButton;
     }
 }
