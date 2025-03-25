@@ -12,6 +12,7 @@ import java.io.Serializable;
 import java.util.List;
 
 import static org.reflections.Reflections.log;
+
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -26,6 +27,9 @@ public class AsyncRestClientService {
     @Autowired
     BookController bookController;//mimic remote controller
 
+    @Autowired
+    BookService bookService;
+
     public interface AsyncRestCallback<T> {
         void operationFinished(T book);
     }
@@ -33,7 +37,7 @@ public class AsyncRestClientService {
     public void getBooksAsync(AsyncRestCallback<Book> callback) {
         log.info("Fetching books through REST...");
 
-        bookController.getBooks(1)
+        bookController.getBooks(Math.toIntExact(bookService.findItemWithLargestId() == null ? 0 : bookService.findItemWithLargestId().getId()))
                 .subscribe(
                         book -> {
                             log.info("book_received={}", book);
@@ -42,4 +46,5 @@ public class AsyncRestClientService {
                         error -> log.error("Error fetching books", error) // Error handling
                 );
     }
+
 }

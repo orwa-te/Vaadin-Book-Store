@@ -20,6 +20,7 @@ import com.vaadin.flow.component.textfield.TextArea;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.data.binder.Binder;
 import com.vaadin.flow.data.binder.ValidationException;
+import com.vaadin.flow.data.provider.ConfigurableFilterDataProvider;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.PermitAll;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,8 @@ import org.vaadin.example.backend.entity.Book;
 import org.vaadin.example.backend.service.AsyncRestClientService;
 import org.vaadin.example.backend.service.BookService;
 
+import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -40,6 +43,8 @@ public class DashboardView extends VerticalLayout {
     private final BookService bookService;
     private final Grid<Book> grid = new Grid<>(Book.class, false);
     private final AsyncRestClientService service;
+    private final TextField searchField = new TextField();
+
 
 
     public DashboardView(@Autowired AsyncRestClientService service, BookService bookService) {
@@ -51,7 +56,9 @@ public class DashboardView extends VerticalLayout {
         layout.setJustifyContentMode(JustifyContentMode.BETWEEN);
 
         var horizontalLayout = new HorizontalLayout();
-        horizontalLayout.add(createAddButton(), createReqestBooksDeliveryButton());
+        configureSearch();
+        horizontalLayout.add(createAddButton(), createReqestBooksDeliveryButton(), searchField);
+        horizontalLayout.setFlexGrow(20, searchField);
 
         add(
                 layout,
@@ -61,10 +68,41 @@ public class DashboardView extends VerticalLayout {
         updateGrid();
     }
 
+    private void configureSearch() {
+        searchField.setPlaceholder("Search books...");
+        searchField.setPrefixComponent(VaadinIcon.SEARCH.create());
+        searchField.setWidthFull();
+        searchField.setClearButtonVisible(true);
+
+        searchField.addValueChangeListener(e -> updateGrid());
+    }
+
     private void configureGrid() {
-        grid.addColumn(Book::getTitle).setHeader("Title");
-        grid.addColumn(Book::getAuthor).setHeader("Author");
-        grid.addColumn(Book::getPublicationYear).setHeader("Year");
+        grid.addColumn(Book::getTitle)
+                .setHeader("Title")
+                .setSortable(true)
+                .setSortProperty("title")
+                .setComparator(Comparator.comparing(Book::getTitle));
+
+        grid.addColumn(Book::getAuthor)
+                .setHeader("Author")
+                .setSortable(true)
+                .setSortProperty("author")
+                .setComparator(Comparator.comparing(Book::getAuthor));
+
+        grid.addColumn(Book::getPublicationYear)
+                .setHeader("Year")
+                .setSortProperty("publicationYear")
+                .setSortable(true)
+                .setComparator(Comparator.comparing(Book::getPublicationYear));
+
+        grid.addColumn(book -> DateTimeFormatter
+                        .ofPattern("yyyy-MM-dd HH:mm")
+                        .format(book.getCreationDate()))
+                .setHeader("Created At")
+                .setSortable(true)
+                .setSortProperty("creationDate")
+                .setComparator(Comparator.comparing(Book::getCreationDate));
 
         grid.addComponentColumn(book -> {
             HorizontalLayout buttons = new HorizontalLayout();
@@ -92,7 +130,7 @@ public class DashboardView extends VerticalLayout {
         grid.setWidthFull();
     }
 
-    private void deleteBookRecord(Book book){
+    private void deleteBookRecord(Book book) {
         bookService.delete(book);
         updateGrid();
     }
@@ -198,19 +236,19 @@ public class DashboardView extends VerticalLayout {
         return button;
     }
 
-    private void requestBooksDelivery(){
-        final UI ui = getUI().isPresent()? getUI().get():null;
-        if(ui == null){
+    private void requestBooksDelivery() {
+        final UI ui = getUI().isPresent() ? getUI().get() : null;
+        if (ui == null) {
             log.error("error_getting_ui_when_request_book_delivery");
         }
         service.getBooksAsync(book -> {
             Objects.requireNonNull(ui).access(() -> {
-                try{
+                try {
                     bookService.save(book);
                     updateGrid();
-                    Notification.show("new book received "+ book.getTitle());
-                }catch (Exception e){
-                    log.error("error_saving_data={}",e.getMessage());
+                    Notification.show("new book received " + book.getTitle());
+                } catch (Exception e) {
+                    log.error("error_saving_data={}", e.getMessage());
                 }
 
             });
@@ -229,7 +267,7 @@ public class DashboardView extends VerticalLayout {
 
         Binder<Book> binder = new Binder<>(Book.class);
 
-        configureBinder(binder, title,author, year, description);
+        configureBinder(binder, title, author, year, description);
 
         Button save = new Button("Save", e -> {
             if (binder.validate().isOk()) {
@@ -342,7 +380,13 @@ public class DashboardView extends VerticalLayout {
     }
 
     private void updateGrid() {
-        grid.setItems(bookService.findAll());
+
+        grid.setItems(query -> bookService.search(
+                searchField.getValue(),
+                query.getPage(),
+                query.getPageSize(),
+                query.getSortOrders()
+        ).stream());
     }
 
     private Component createLogoutButton() {
@@ -352,7 +396,7 @@ public class DashboardView extends VerticalLayout {
         logoutButton.addClickListener(e -> {
             // Spring Security logout logic
             UI ui = UI.getCurrent();
-            if(ui!=null){
+            if (ui != null) {
                 ui.getSession().getSession().invalidate();
                 ui.getSession().close();
                 SecurityContextHolder.clearContext();

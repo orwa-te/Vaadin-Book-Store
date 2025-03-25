@@ -1,14 +1,14 @@
 package org.vaadin.example.backend.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Setter
@@ -35,5 +35,17 @@ public class Book {
     @NotBlank(message = "Description is mandatory")
     @Column(length = 2000)
     private String description;
+
+    @Column(name = "creation_date", nullable = false, updatable = false)
+    @CreationTimestamp
+    private LocalDateTime creationDate;
+
+    // Pre-persist hook to ensure creation date is set
+    @PrePersist
+    protected void onCreate() {
+        if (creationDate == null) {
+            creationDate = LocalDateTime.now();
+        }
+    }
 
 }
